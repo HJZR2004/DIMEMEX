@@ -121,6 +121,14 @@ def eval_model(model, data_loader, loss_fn, device, n_examples):
 
 
 if __name__ == "__main__":
+
+    # Verificar si el modelo ya existe
+    if os.path.exists(MODEL_SAVE_PATH):
+        print("\n" + "="*50)
+        print(f"El modelo ya existe en: {MODEL_SAVE_PATH}")
+        print("="*50 + "\n")
+        exit()
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Iniciando en: {device}")
     
