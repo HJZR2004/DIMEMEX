@@ -14,10 +14,10 @@ TRAIN_FILE = "train.csv"
 VAL_FILE = "val.csv"
 
 if TASK_NAME == "simple":
-    MODEL_SAVE_PATH = "../modelos/beto_simple.pth"
+    MODEL_SAVE_PATH = "../models/beto_simple.pth"
     CLASSES_NAMES = ["None", "Inappropriate", "Hate"]
 elif TASK_NAME == "complex":
-    MODEL_SAVE_PATH = "../modelos/beto_complex.pth"
+    MODEL_SAVE_PATH = "../models/beto_complex.pth"
     CLASSES_NAMES = ["None", "Inapp", "Sexism", "Racism", "Classicism", "Other"]
 else:
     raise ValueError("TASK_NAME debe ser 'simple' o 'complex'")
