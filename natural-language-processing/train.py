@@ -1,10 +1,13 @@
 import pandas as pd
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-from transformers import AutoTokenizer, AutoModel
+from torch.utils.data import DataLoader
+from transformers import AutoTokenizer
 import os
 import time
+
+
+from nlp_utils import BetoClassifier, MemeDataset
 
 # Configuracion de rutas
 SPLITS_DIR = "../data/processed/splits"
@@ -17,52 +20,6 @@ BATCH_SIZE = 16
 EPOCHS = 4
 LEARNING_RATE = 2e-5
 
-# Clase para cargar el dataset
-class MemeDataset(Dataset):
-    def __init__(self, df, tokenizer, max_len, label_col):
-        self.df = df.reset_index(drop=True)
-        self.tokenizer = tokenizer
-        self.max_len = max_len
-        self.label_col = label_col # Columna dinamica segun la tarea
-        
-    def __len__(self):
-        return len(self.df)
-    
-    def __getitem__(self, index):
-        # Cargar texto limpio
-        text = str(self.df.loc[index, 'text_clean'])
-        # Cargar label dinamico (simple o complex)
-        label = int(self.df.loc[index, self.label_col])
-        
-        encoding = self.tokenizer.encode_plus(
-            text,
-            add_special_tokens=True,
-            max_length=self.max_len,
-            padding='max_length',
-            truncation=True,
-            return_attention_mask=True,
-            return_tensors='pt',
-        )
-        
-        return {
-            'input_ids': encoding['input_ids'].flatten(),
-            'attention_mask': encoding['attention_mask'].flatten(),
-            'label': torch.tensor(label, dtype=torch.long)
-        }
-
-# Modelo basado en BETO
-class BetoClassifier(nn.Module):
-    def __init__(self, n_classes):
-        super(BetoClassifier, self).__init__()
-        self.bert = AutoModel.from_pretrained(MODEL_NAME)
-        self.drop = nn.Dropout(p=0.3)
-        self.out = nn.Linear(self.bert.config.hidden_size, n_classes)
-        
-    def forward(self, input_ids, attention_mask):
-        output = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        pooled_output = output.pooler_output
-        return self.out(self.drop(pooled_output))
-
 # Funciones de entrenamiento y evaluacion
 def train_epoch(model, data_loader, loss_fn, optimizer, device, n_examples):
     model = model.train()
@@ -74,7 +31,7 @@ def train_epoch(model, data_loader, loss_fn, optimizer, device, n_examples):
         attention_mask = d["attention_mask"].to(device)
         targets = d["label"].to(device)
         
-        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+        outputs = model(input_ids, attention_mask)
         _, preds = torch.max(outputs, dim=1)
         loss = loss_fn(outputs, targets)
         
@@ -99,7 +56,7 @@ def eval_model(model, data_loader, loss_fn, device, n_examples):
             attention_mask = d["attention_mask"].to(device)
             targets = d["label"].to(device)
             
-            outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+            outputs = model(input_ids, attention_mask)
             _, preds = torch.max(outputs, dim=1)
             loss = loss_fn(outputs, targets)
             correct_predictions += torch.sum(preds == targets)
@@ -110,7 +67,6 @@ def eval_model(model, data_loader, loss_fn, device, n_examples):
 def run_training_pipeline(task_name, device):
     print(f"\nIniciando entrenamiento para tarea: {task_name}")
 
-    # Configurar columna objetivo y ruta de modelo segun tarea
     if task_name == "simple":
         target_col = "label-simple"
         model_save_path = os.path.join(MODEL_DIR, "beto_simple.pth")
@@ -121,12 +77,10 @@ def run_training_pipeline(task_name, device):
         print(f"Tarea desconocida: {task_name}")
         return
 
-    # Verificar si el modelo ya existe
     if os.path.exists(model_save_path):
         print(f"El modelo ya existe en: {model_save_path}. Saltando...")
         return
 
-    # Cargar los splits ya existentes (train.csv y val.csv)
     train_path = os.path.join(SPLITS_DIR, "train.csv")
     val_path = os.path.join(SPLITS_DIR, "val.csv")
 
@@ -137,23 +91,19 @@ def run_training_pipeline(task_name, device):
     df_train = pd.read_csv(train_path)
     df_val = pd.read_csv(val_path)
 
-    # Detectar numero de clases basado en la columna especifica
     n_classes = df_train[target_col].nunique()
     print(f"Clases detectadas ({target_col}): {n_classes}")
     print(f"Datos de entrenamiento: {len(df_train)} | Validacion: {len(df_val)}")
 
-    # Preparar tokenizador y loaders
-    # Se pasa target_col al dataset para que sepa que etiqueta leer
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     train_loader = DataLoader(MemeDataset(df_train, tokenizer, MAX_LEN, target_col), batch_size=BATCH_SIZE, shuffle=True)
     val_loader = DataLoader(MemeDataset(df_val, tokenizer, MAX_LEN, target_col), batch_size=BATCH_SIZE)
 
-    # Inicializar modelo
-    model = BetoClassifier(n_classes).to(device)
+    # Instanciamos la clase importada de nlp_utils
+    model = BetoClassifier(n_classes, MODEL_NAME).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
     loss_fn = nn.CrossEntropyLoss().to(device)
 
-    # Bucle de entrenamiento
     best_acc = 0
     os.makedirs(MODEL_DIR, exist_ok=True)
 
@@ -175,11 +125,9 @@ def run_training_pipeline(task_name, device):
     print(f"Finalizado {task_name}. Mejor Accuracy: {best_acc:.4f}")
 
 if __name__ == "__main__":
-    # Configuracion de dispositivo
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Dispositivo: {device}")
 
-    # Lista de tareas a ejecutar secuencialmente
     tasks_to_run = ["simple", "complex"]
 
     for task in tasks_to_run:
