@@ -5,7 +5,8 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 import os
 import time
-
+import numpy as np 
+from sklearn.utils.class_weight import compute_class_weight 
 
 from nlp_utils import BetoClassifier, MemeDataset
 
@@ -69,14 +70,15 @@ def run_training_pipeline(task_name, device):
 
     if task_name == "simple":
         target_col = "label-simple"
-        model_save_path = os.path.join(MODEL_DIR, "beto_simple.pth")
+        model_save_path = os.path.join(MODEL_DIR, "beto_simple_v2.pth")
     elif task_name == "complex":
         target_col = "label-complex"
-        model_save_path = os.path.join(MODEL_DIR, "beto_complex.pth")
+        model_save_path = os.path.join(MODEL_DIR, "beto_complex_v2.pth")
     else:
         print(f"Tarea desconocida: {task_name}")
         return
 
+    # Si quieres re-entrenar para mejorar, comenta estas lineas o borra los archivos .pth viejos
     if os.path.exists(model_save_path):
         print(f"El modelo ya existe en: {model_save_path}. Saltando...")
         return
@@ -95,6 +97,22 @@ def run_training_pipeline(task_name, device):
     print(f"Clases detectadas ({target_col}): {n_classes}")
     print(f"Datos de entrenamiento: {len(df_train)} | Validacion: {len(df_val)}")
 
+    # Calculo de pesos de clase para balanceo
+
+    # Extraer todos los labels de entrenamiento
+    all_labels = df_train[target_col].values
+    classes = np.unique(all_labels)
+    
+    # Calcular pesos balanceados: w_j = n_samples / (n_classes * n_samples_j)
+    print("Calculando pesos de clases para balanceo...")
+    weights = compute_class_weight(class_weight='balanced', classes=classes, y=all_labels)
+    
+    # Convertir a tensor y mover al dispositivo (GPU/CPU)
+    class_weights = torch.tensor(weights, dtype=torch.float).to(device)
+    print(f"Pesos asignados a las clases: {class_weights}")
+
+######################################
+
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     train_loader = DataLoader(MemeDataset(df_train, tokenizer, MAX_LEN, target_col), batch_size=BATCH_SIZE, shuffle=True)
     val_loader = DataLoader(MemeDataset(df_val, tokenizer, MAX_LEN, target_col), batch_size=BATCH_SIZE)
@@ -102,7 +120,9 @@ def run_training_pipeline(task_name, device):
     # Instanciamos la clase importada de nlp_utils
     model = BetoClassifier(n_classes, MODEL_NAME).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
-    loss_fn = nn.CrossEntropyLoss().to(device)
+    
+    # Pasamos los pesos a la funcion de perdida
+    loss_fn = nn.CrossEntropyLoss(weight=class_weights).to(device)
 
     best_acc = 0
     os.makedirs(MODEL_DIR, exist_ok=True)
@@ -117,6 +137,7 @@ def run_training_pipeline(task_name, device):
         print(f"Train Acc: {train_acc:.4f} | Loss: {train_loss:.4f}")
         print(f"Val   Acc: {val_acc:.4f} | Loss: {val_loss:.4f}")
         
+        # Guardar el mejor modelo
         if val_acc > best_acc:
             torch.save(model.state_dict(), model_save_path)
             best_acc = val_acc
