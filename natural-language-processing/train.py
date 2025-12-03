@@ -6,43 +6,33 @@ from transformers import AutoTokenizer, AutoModel
 import os
 import time
 
-# Opciones: "simple" | "complex"
-TASK_NAME = "simple" 
+# Configuracion de rutas
+SPLITS_DIR = "../data/processed/splits"
+MODEL_DIR = "../models"
 
-DATA_DIR = "../data/processed/splits"
-TRAIN_FILE = "train.csv"
-VAL_FILE = "val.csv"
-
-if TASK_NAME == "simple":
-    MODEL_SAVE_PATH = "../models/beto_simple.pth"
-    CLASSES_NAMES = ["None", "Inappropriate", "Hate"]
-elif TASK_NAME == "complex":
-    MODEL_SAVE_PATH = "../models/beto_complex.pth"
-    CLASSES_NAMES = ["None", "Inapp", "Sexism", "Racism", "Classicism", "Other"]
-else:
-    raise ValueError("TASK_NAME debe ser 'simple' o 'complex'")
-
-# Hiperparámetros
+# Hiperparametros globales
 MODEL_NAME = "dccuchile/bert-base-spanish-wwm-cased"
 MAX_LEN = 128
 BATCH_SIZE = 16
 EPOCHS = 4
 LEARNING_RATE = 2e-5
 
-# clase para cargar el dataset
+# Clase para cargar el dataset
 class MemeDataset(Dataset):
-    def __init__(self, df, tokenizer, max_len):
+    def __init__(self, df, tokenizer, max_len, label_col):
         self.df = df.reset_index(drop=True)
         self.tokenizer = tokenizer
         self.max_len = max_len
+        self.label_col = label_col # Columna dinamica segun la tarea
         
     def __len__(self):
         return len(self.df)
     
     def __getitem__(self, index):
-        # Cargamos directo del DF ya procesado
+        # Cargar texto limpio
         text = str(self.df.loc[index, 'text_clean'])
-        label = int(self.df.loc[index, 'label'])
+        # Cargar label dinamico (simple o complex)
+        label = int(self.df.loc[index, self.label_col])
         
         encoding = self.tokenizer.encode_plus(
             text,
@@ -60,8 +50,7 @@ class MemeDataset(Dataset):
             'label': torch.tensor(label, dtype=torch.long)
         }
 
-
-# modelo basado en BETO que añade una capa de dropout y una capa lineal final
+# Modelo basado en BETO
 class BetoClassifier(nn.Module):
     def __init__(self, n_classes):
         super(BetoClassifier, self).__init__()
@@ -74,8 +63,7 @@ class BetoClassifier(nn.Module):
         pooled_output = output.pooler_output
         return self.out(self.drop(pooled_output))
 
-
-# funciones de entrenamiento y evaluación
+# Funciones de entrenamiento y evaluacion
 def train_epoch(model, data_loader, loss_fn, optimizer, device, n_examples):
     model = model.train()
     losses = []
@@ -119,55 +107,56 @@ def eval_model(model, data_loader, loss_fn, device, n_examples):
             
     return correct_predictions.double() / n_examples, sum(losses) / len(losses)
 
+def run_training_pipeline(task_name, device):
+    print(f"\nIniciando entrenamiento para tarea: {task_name}")
 
-if __name__ == "__main__":
+    # Configurar columna objetivo y ruta de modelo segun tarea
+    if task_name == "simple":
+        target_col = "label-simple"
+        model_save_path = os.path.join(MODEL_DIR, "beto_simple.pth")
+    elif task_name == "complex":
+        target_col = "label-complex"
+        model_save_path = os.path.join(MODEL_DIR, "beto_complex.pth")
+    else:
+        print(f"Tarea desconocida: {task_name}")
+        return
 
     # Verificar si el modelo ya existe
-    if os.path.exists(MODEL_SAVE_PATH):
-        print("\n" + "="*50)
-        print(f"El modelo ya existe en: {MODEL_SAVE_PATH}")
-        print("="*50 + "\n")
-        exit()
+    if os.path.exists(model_save_path):
+        print(f"El modelo ya existe en: {model_save_path}. Saltando...")
+        return
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Iniciando en: {device}")
-    
-    # Cargar datos pre-procesados
-    print(f"Cargando splits desde {DATA_DIR}...")
-    train_path = os.path.join(DATA_DIR, TRAIN_FILE)
-    val_path = os.path.join(DATA_DIR, VAL_FILE)
-    
+    # Cargar los splits ya existentes (train.csv y val.csv)
+    train_path = os.path.join(SPLITS_DIR, "train.csv")
+    val_path = os.path.join(SPLITS_DIR, "val.csv")
+
     if not os.path.exists(train_path) or not os.path.exists(val_path):
-        print("ERROR: No encuentro train.csv o val.csv en la carpeta splits.")
-        print("Ejecuta primero el script de partición.")
-        exit()
+        print("Error: No se encuentran los archivos train.csv o val.csv en splits.")
+        return
 
     df_train = pd.read_csv(train_path)
     df_val = pd.read_csv(val_path)
-    
-    print(f"   Train: {len(df_train)} | Val: {len(df_val)}")
 
-    # Verificar Clases
-    n_classes = df_train['label'].nunique()
-    print(f"Clases detectadas en CSV: {n_classes}")
-    
-    # Validación simple: Si configuraste 'simple' (3 clases) pero el CSV tiene 6, alerta.
-    if TASK_NAME == "simple" and n_classes > 3:
-        print("ADVERTENCIA: Estás entrenando modo SIMPLE pero el CSV parece tener muchas clases.")
-    
-    # Preparar Loaders
+    # Detectar numero de clases basado en la columna especifica
+    n_classes = df_train[target_col].nunique()
+    print(f"Clases detectadas ({target_col}): {n_classes}")
+    print(f"Datos de entrenamiento: {len(df_train)} | Validacion: {len(df_val)}")
+
+    # Preparar tokenizador y loaders
+    # Se pasa target_col al dataset para que sepa que etiqueta leer
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    train_loader = DataLoader(MemeDataset(df_train, tokenizer, MAX_LEN), batch_size=BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(MemeDataset(df_val, tokenizer, MAX_LEN), batch_size=BATCH_SIZE)
-    
-    # Modelo
+    train_loader = DataLoader(MemeDataset(df_train, tokenizer, MAX_LEN, target_col), batch_size=BATCH_SIZE, shuffle=True)
+    val_loader = DataLoader(MemeDataset(df_val, tokenizer, MAX_LEN, target_col), batch_size=BATCH_SIZE)
+
+    # Inicializar modelo
     model = BetoClassifier(n_classes).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
     loss_fn = nn.CrossEntropyLoss().to(device)
-    
-    # Entrenamiento
+
+    # Bucle de entrenamiento
     best_acc = 0
-    
+    os.makedirs(MODEL_DIR, exist_ok=True)
+
     for epoch in range(EPOCHS):
         print(f"Epoch {epoch+1}/{EPOCHS}")
         start = time.time()
@@ -175,13 +164,29 @@ if __name__ == "__main__":
         train_acc, train_loss = train_epoch(model, train_loader, loss_fn, optimizer, device, len(df_train))
         val_acc, val_loss = eval_model(model, val_loader, loss_fn, device, len(df_val))
         
-        print(f"  Train Acc: {train_acc:.4f} | Loss: {train_loss:.4f}")
-        print(f"  Val   Acc: {val_acc:.4f} | Loss: {val_loss:.4f}")
+        print(f"Train Acc: {train_acc:.4f} | Loss: {train_loss:.4f}")
+        print(f"Val   Acc: {val_acc:.4f} | Loss: {val_loss:.4f}")
         
         if val_acc > best_acc:
-            os.makedirs("../modelos", exist_ok=True)
-            torch.save(model.state_dict(), MODEL_SAVE_PATH)
+            torch.save(model.state_dict(), model_save_path)
             best_acc = val_acc
-            print(f"Modelo guardado: {MODEL_SAVE_PATH}")
+            print(f"Modelo guardado: {model_save_path}")
+
+    print(f"Finalizado {task_name}. Mejor Accuracy: {best_acc:.4f}")
+
+if __name__ == "__main__":
+    # Configuracion de dispositivo
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Dispositivo: {device}")
+
+    # Lista de tareas a ejecutar secuencialmente
+    tasks_to_run = ["simple", "complex"]
+
+    for task in tasks_to_run:
+        try:
+            run_training_pipeline(task, device)
+        except Exception as e:
+            print(f"Error critico en tarea {task}: {e}")
+            continue
             
-    print("\nFin.")
+    print("\nEntrenamiento completado para todas las tareas.")
