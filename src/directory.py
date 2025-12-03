@@ -1,8 +1,14 @@
 import pandas as pd
 import json
 import os
-import numpy as np
+"""
+Este codigo nos ayuda a crear un archivo csv con las rutas de las imagenes y sus etiquetas,
+de forma que sea mas facil poder manipular los datos para entrenar modelos de machine learning.
+estos se guardaran en la carpeta de data/processed como dataset-simple.csv y dataset-complex.csv
 
+dataset-simple.csv -> etiquetas: none, inappropriate, hate_speech
+dataset-complex.csv -> etiquetas: none, inappropriate, sexism, racism, classicism, other
+"""
 
 BASE_DIR = "../data" 
 TRAIN_FOLDER = "train"
@@ -42,13 +48,13 @@ def directorios(task_name):
     images_prefix = os.path.join("data", TRAIN_FOLDER, "images")
     df['path'] = df['MEME-ID'].apply(lambda x: os.path.join(images_prefix, x))
     
-    final_df = df[['path', 'label']]
+    final_df = df[['path','text','description','label']]
     
     # Guardamos el DataFrame final en un nuevo archivo CSV
     output_dir = os.path.join(BASE_DIR, "processed")
     os.makedirs(output_dir, exist_ok=True)
     
-    output_file = os.path.join(output_dir, f"dataset_{task_name}.csv")
+    output_file = os.path.join(output_dir, f"dataset-{task_name}.csv")
     final_df.to_csv(output_file, index=False)
 
 
