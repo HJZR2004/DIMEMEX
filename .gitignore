@@ -1,3 +1,12 @@
-__pycache__/
+# Ignorar datos crudos y procesados
 data/
-models/
+
+# Ignorar modelos pesados
+models/*.pth
+models/*.bin
+
+# Ignorar archivos de sistema y entornos
+__pycache__/
+venv/
+.env
+.DS_Store
