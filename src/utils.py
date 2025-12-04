@@ -20,9 +20,7 @@ def clean_text(text):
     return text if text else "sin texto"
 
 def preprocess_image_for_ocr(file_obj):
-    """
-    Versión optimizada para memes con subtítulos oscuros/complejos.
-    """
+
     try:
         # Leer el archivo (puede ser UploadedFile de Streamlit o bytes)
         if hasattr(file_obj, 'read'):
@@ -41,17 +39,14 @@ def preprocess_image_for_ocr(file_obj):
         # 2. Convertir a escala de grises
         gray = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
         
-        # 3. CAMBIO CLAVE: Aumentar Contraste (CLAHE) en lugar de Binarizar agresivamente
-        # CLAHE (Contrast Limited Adaptive Histogram Equalization) mejora el texto
-        # sin destruir los bordes como lo hace el Threshold puro.
+        # aumentamos el contraste para mejorar la detección de texto 
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
         contrast_img = clahe.apply(gray)
         
-        # 4. Denoising suave (bajamos h de 10 a 5 para no borrar letras finas)
+        # denoinsing con fastNlMeansDenoising para conservar mejor detalles finos
         denoised = cv2.fastNlMeansDenoising(contrast_img, None, h=5, templateWindowSize=7, searchWindowSize=21)
         
-        # Retornamos la imagen contrastada (gris) en lugar de binarizada (blanco/negro)
-        # EasyOCR a veces prefiere grises con buen contraste que binarización forzada.
+        # retornamos la imagen denoised y la original redimensionada en escala de grises
         return denoised, img
 
     except Exception as e:

@@ -4,9 +4,9 @@ from PIL import Image
 import sys
 import os
 
-# --- CORRECCIÓN DE RUTAS ---
+# Definir path para importar módulos locales
 current_dir = os.path.dirname(os.path.abspath(__file__))
-src_path = os.path.join(current_dir, '../src') # Ajuste para subir un nivel y entrar a src
+src_path = os.path.join(current_dir, '../src')
 sys.path.append(os.path.abspath(src_path))
 
 try:
@@ -15,14 +15,14 @@ except ImportError as e:
     st.error(f"Error crítico de importación: {e}")
     st.stop()
 
-# --- 1. CONFIGURACIÓN DE PÁGINA ---
+# configuración de la página
 st.set_page_config(
     page_title="DIME-MEX",
     layout="centered",
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. ESTILOS CSS "APPLE STYLE" ---
+# estilos
 st.markdown("""
     <style>
         /* Tipografía limpia (System Fonts) */
@@ -117,9 +117,8 @@ except Exception as e:
     st.error("El servicio no está disponible en este momento.")
     st.stop()
 
-# --- 4. INTERFAZ DE USUARIO ---
 
-# Encabezado Minimalista
+# Encabezado
 st.markdown("<h1 style='text-align: center; margin-bottom: 10px;'>DIME-MEX</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #86868b; font-size: 18px;'>Análisis de contenido mediante IA.</p>", unsafe_allow_html=True)
 
@@ -140,10 +139,10 @@ uploaded_file = st.file_uploader("Subir imagen", type=["jpg", "png", "jpeg"], la
 if uploaded_file is not None:
     # Mostrar imagen
     image = Image.open(uploaded_file)
-    # CORRECCIÓN: Usamos use_container_width en lugar de use_column_width
     st.image(image, use_container_width=True)
     
-    st.write("") # Espaciador vertical
+    # Espaciador
+    st.write("") 
     
     # Botón de Acción
     if st.button("Analizar"):

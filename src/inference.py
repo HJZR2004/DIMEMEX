@@ -72,16 +72,16 @@ class MemePredictor:
         return model
 
     def predict(self, image_file, task="simple"):
-        # 1. Resetear puntero del archivo
+        # Resetear puntero del archivo
         image_file.seek(0)
         
-        # 2. Pre-procesamiento de Imagen (Visión)
+        # Pre-procesamiento de Imagen (Visión)
         proc_img, raw_img = preprocess_image_for_ocr(image_file)
         
         if proc_img is None:
             return {"error": "Error procesando la imagen (archivo corrupto o formato inválido)"}
 
-        # 3. OCR con Fallback
+        # OCR con Fallback
         try:
             # Intento 1: Imagen procesada
             ocr_result = self.reader.readtext(proc_img, detail=0, paragraph=True)
@@ -94,10 +94,10 @@ class MemePredictor:
         except Exception as e:
             return {"error": f"Fallo en OCR: {e}"}
 
-        # 4. Limpieza de Texto (NLP)
+        # Limpieza de Texto (NLP)
         text_ready = clean_text(raw_text)
         
-        # 5. Tokenización
+        # Tokenización
         encoding = self.tokenizer.encode_plus(
             text_ready,
             add_special_tokens=True,
@@ -111,7 +111,7 @@ class MemePredictor:
         input_ids = encoding['input_ids'].to(DEVICE)
         attention_mask = encoding['attention_mask'].to(DEVICE)
         
-        # 6. Inferencia del Modelo
+        # Inferencia del Modelo
         try:
             model = self._get_model_instance(task)
             
