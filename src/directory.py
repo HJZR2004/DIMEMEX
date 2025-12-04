@@ -51,7 +51,7 @@ def directorios(task_name):
     final_df = df[['path','text','description','label']]
     
     # Guardamos el DataFrame final en un nuevo archivo CSV
-    output_dir = os.path.join(BASE_DIR, "processed")
+    output_dir = os.path.join(BASE_DIR, "processed/datasets")
     os.makedirs(output_dir, exist_ok=True)
     
     output_file = os.path.join(output_dir, f"dataset-{task_name}.csv")

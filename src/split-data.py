@@ -7,7 +7,7 @@ DATA_DIR = "../data/processed"
 TEXT_FILE = "cleaned-ocr.csv"
 SIMPLE_FILE = "dataset-simple.csv"
 COMPLEX_FILE = "dataset-complex.csv"
-OUTPUT_DIR = "../data/processed/splits"
+OUTPUT_DIR = "../data/processed/nlp"
 
 def create_master_splits():
     # Cargar archivos CSV de texto y etiquetas

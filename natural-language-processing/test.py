@@ -8,7 +8,7 @@ import os
 from nlp_utils import BetoClassifier, MemeDataset
 
 # Configuracion de rutas
-DATA_DIR = "../data/processed/splits"
+DATA_DIR = "../data/processed/nlp"
 TEST_FILE = "test.csv"
 VERSION = int(input("Ingrese la version del modelo a testear (1 2 3): "))
 MODEL_DIR = f"../models/v{VERSION}"

@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 from nlp_utils import BetoClassifier, MemeDataset
 
 # Configuracion de rutas
-DATA_DIR = "../data/processed/splits"
+DATA_DIR = "../data/processed/nlp"
 MODEL_DIR = "../models/v3"
 COMPLETE_DATA_FILE = "complete-data.csv"
 

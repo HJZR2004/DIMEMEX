@@ -11,7 +11,7 @@ y guardarlo en un archivo csv llamado cleaned-ocr.csv dentro de la carpeta data/
 
 BASE_DIR = "../data"
 TRAIN_FOLDER = "train" 
-OUTPUT_DIR = "../data/processed"
+OUTPUT_DIR = "../data/processed/nlp"
 
 
 
