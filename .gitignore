@@ -2,8 +2,7 @@
 data/
 
 # Ignorar modelos pesados
-models/*.pth
-models/*.bin
+models/
 
 # Ignorar archivos de sistema y entornos
 __pycache__/
