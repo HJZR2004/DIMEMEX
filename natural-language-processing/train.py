@@ -5,16 +5,24 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 import os
 import time
+import sys
 import numpy as np
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.model_selection import train_test_split
 
-# Importar clases compartidas
+# Configuracion de rutas dinamicas
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../"))
+
+SRC_DIR = os.path.join(PROJECT_ROOT, "src")
+
+# Agregar el directorio actual al path para importar nlp_utils
+sys.path.append(SRC_DIR)
 from nlp_utils import BetoClassifier, MemeDataset
 
-# Configuracion de rutas
-DATA_DIR = "../data/processed/nlp"
-MODEL_DIR = "../models/v3"
+# Definicion de directorios de datos y modelos
+DATA_DIR = os.path.join(PROJECT_ROOT, "data", "processed", "nlp")
+MODEL_DIR = os.path.join(PROJECT_ROOT, "models", "v3")
 COMPLETE_DATA_FILE = "complete-data.csv"
 
 # Hiperparametros globales
@@ -24,7 +32,7 @@ BATCH_SIZE = 16
 EPOCHS = 4
 LEARNING_RATE = 2e-5
 
-# Funciones de entrenamiento y evaluacion
+# Funcion de entrenamiento por epoca
 def train_epoch(model, data_loader, loss_fn, optimizer, device, n_examples):
     model = model.train()
     losses = []
@@ -49,6 +57,7 @@ def train_epoch(model, data_loader, loss_fn, optimizer, device, n_examples):
         
     return correct_predictions.double() / n_examples, sum(losses) / len(losses)
 
+# Funcion de evaluacion del modelo
 def eval_model(model, data_loader, loss_fn, device, n_examples):
     model = model.eval()
     losses = []
@@ -68,8 +77,8 @@ def eval_model(model, data_loader, loss_fn, device, n_examples):
             
     return correct_predictions.double() / n_examples, sum(losses) / len(losses)
 
+# Preparacion de datasets segun modo produccion o experimental
 def prepare_datasets(task_name, production_mode):
-    # Determinar columna objetivo segun tarea
     if task_name == "simple":
         target_col = "label-simple"
     elif task_name == "complex":
@@ -86,8 +95,7 @@ def prepare_datasets(task_name, production_mode):
             
         df_full = pd.read_csv(full_path)
         
-        # Usar casi todo para train, dejar minimo para val solo para evitar errores
-        # Stratify es importante para mantener proporcion en el mini val
+        # Usar casi todo para train dejando un minimo para validacion tecnica
         df_train, df_val = train_test_split(
             df_full, 
             test_size=0.05, 
@@ -95,7 +103,7 @@ def prepare_datasets(task_name, production_mode):
             stratify=df_full[target_col]
         )
     else:
-        # Carga splits de experimentacion
+        # Carga splits de experimentacion estandar
         train_path = os.path.join(DATA_DIR, "train.csv")
         val_path = os.path.join(DATA_DIR, "val.csv")
         
@@ -108,11 +116,10 @@ def prepare_datasets(task_name, production_mode):
 
     return df_train, df_val, target_col
 
+# Ejecucion del pipeline de entrenamiento completo
 def run_pipeline(task_name, production_mode, device):
     mode_str = "PROD" if production_mode else "EXP"
-    print(f"\n{'='*60}")
-    print(f" INICIANDO: TAREA {task_name.upper()} | MODO: {mode_str}")
-    print(f"{'='*60}")
+    print(f"\nIniciando tarea {task_name.upper()} en modo {mode_str}")
 
     # Configurar nombre del modelo
     suffix = "_prod" if production_mode else "_exp"
@@ -140,7 +147,7 @@ def run_pipeline(task_name, production_mode, device):
     weights = compute_class_weight(class_weight='balanced', classes=classes, y=all_labels)
     class_weights = torch.tensor(weights, dtype=torch.float).to(device)
     
-    # Preparar loaders
+    # Preparar tokenizador y dataloaders
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     train_loader = DataLoader(MemeDataset(df_train, tokenizer, MAX_LEN, target_col), 
                               batch_size=BATCH_SIZE, shuffle=True)
@@ -164,30 +171,31 @@ def run_pipeline(task_name, production_mode, device):
         
         print(f"Epoca {epoch+1}/{EPOCHS} | Train Loss: {train_loss:.4f} | Val Acc: {val_acc:.4f}")
         
-        # Guardar siempre el mejor
+        # Guardar siempre el mejor modelo basado en accuracy de validacion
         if val_acc > best_acc:
             torch.save(model.state_dict(), model_save_path)
             best_acc = val_acc
-            print(f"  -> Nuevo mejor modelo guardado")
+            print(f"Nuevo mejor modelo guardado en {model_save_path}")
 
     print(f"Finalizado {model_filename}. Mejor Accuracy: {best_acc:.4f}")
 
 if __name__ == "__main__":
+    # Configuracion de dispositivo
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Dispositivo global: {device}")
 
     # Lista de configuraciones a ejecutar
     scenarios = [
-        {"task": "simple", "prod": False},  # Experimentacion
-        {"task": "complex", "prod": False}, # Experimentacion
-        {"task": "simple", "prod": True},   # Produccion Final
-        {"task": "complex", "prod": True}   # Produccion Final
+        {"task": "simple", "prod": False},
+        {"task": "complex", "prod": False},
+        {"task": "simple", "prod": True},
+        {"task": "complex", "prod": True}
     ]
 
     for sc in scenarios:
         try:
             run_pipeline(sc["task"], sc["prod"], device)
         except Exception as e:
-            print(f"ERROR CRITICO en escenario {sc}: {e}")
+            print(f"Error critico en escenario {sc}: {e}")
             
     print("\nTodos los procesos de entrenamiento han finalizado.")

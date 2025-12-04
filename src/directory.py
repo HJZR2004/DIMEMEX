@@ -1,17 +1,14 @@
 import pandas as pd
 import json
 import os
-"""
-Este codigo nos ayuda a crear un archivo csv con las rutas de las imagenes y sus etiquetas,
-de forma que sea mas facil poder manipular los datos para entrenar modelos de machine learning.
-estos se guardaran en la carpeta de data/processed como dataset-simple.csv y dataset-complex.csv
 
-dataset-simple.csv -> etiquetas: none, inappropriate, hate_speech
-dataset-complex.csv -> etiquetas: none, inappropriate, sexism, racism, classicism, other
-"""
+# Configuracion de rutas dinamicas
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../"))
 
-BASE_DIR = "../data" 
-TRAIN_FOLDER = "train"
+# Directorios de entrada y salida
+INPUT_DIR = os.path.join(PROJECT_ROOT, "data", "train")
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "data", "processed", "datasets")
 
 TASKS = {
     "simple": {
@@ -24,40 +21,42 @@ TASKS = {
     }
 }
 
-def directorios(task_name):
-    
-    folder_path = os.path.join(BASE_DIR, TRAIN_FOLDER)
-    
+def create_dataset_csv(task_name):
+    # Validar existencia del directorio de entrada
+    if not os.path.exists(INPUT_DIR):
+        print(f"Error: No se encuentra el directorio {INPUT_DIR}")
+        return
 
-    # cargamos el json para obtener los nombres de archivo
-    json_path = os.path.join(folder_path, f"{TRAIN_FOLDER}_data.json")
+    # Cargar archivo JSON con metadatos
+    json_path = os.path.join(INPUT_DIR, "train_data.json")
     with open(json_path, 'r', encoding='utf-8') as f:
         data_json = json.load(f)
     
     df = pd.DataFrame(data_json)
     
-    # cargamos las etiquetas
+    # Cargar archivo CSV con etiquetas
     csv_conf = TASKS[task_name]
-    labels_path = os.path.join(folder_path, csv_conf["file"])
+    labels_path = os.path.join(INPUT_DIR, csv_conf["file"])
     df_labels = pd.read_csv(labels_path, header=None)
     
-    # pasamos de one-hot encoding a etiquetas numéricas
+    # Convertir one-hot encoding a etiquetas numericas
     df['label'] = df_labels.values.argmax(axis=1)
     
-    # Usamos os.path.join para asegurar compatibilidad entre sistemas operativos
-    images_prefix = os.path.join("data", TRAIN_FOLDER, "images")
+    # Generar rutas relativas de las imagenes
+    images_prefix = os.path.join("data", "train", "images")
     df['path'] = df['MEME-ID'].apply(lambda x: os.path.join(images_prefix, x))
     
-    final_df = df[['path','text','description','label']]
+    # Seleccionar columnas finales
+    final_df = df[['path', 'text', 'description', 'label']]
     
-    # Guardamos el DataFrame final en un nuevo archivo CSV
-    output_dir = os.path.join(BASE_DIR, "processed/datasets")
-    os.makedirs(output_dir, exist_ok=True)
+    # Crear directorio de salida si no existe
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     
-    output_file = os.path.join(output_dir, f"dataset-{task_name}.csv")
+    # Guardar archivo CSV
+    output_file = os.path.join(OUTPUT_DIR, f"dataset-{task_name}.csv")
     final_df.to_csv(output_file, index=False)
-
+    print(f"Archivo generado: {output_file}")
 
 if __name__ == "__main__":
-    directorios("simple")
-    directorios("complex")
+    create_dataset_csv("simple")
+    create_dataset_csv("complex")
