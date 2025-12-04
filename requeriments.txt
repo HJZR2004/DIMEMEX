@@ -1,0 +1,13 @@
+pandas
+numpy
+scikit-learn
+torch
+huggingface-hub<1.0
+transformers
+nltk
+matplotlib
+seaborn
+tqdm
+streamlit
+easyocr
+opencv-python-headless
