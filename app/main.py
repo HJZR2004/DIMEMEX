@@ -4,36 +4,104 @@ from PIL import Image
 import sys
 import os
 
-# Configuración de rutas
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
-from inference import MemePredictor
+# --- CORRECCIÓN DE RUTAS ---
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_path = os.path.join(current_dir, '../src') # Ajuste para subir un nivel y entrar a src
+sys.path.append(os.path.abspath(src_path))
 
-# --- 1. CONFIGURACIÓN DE PÁGINA (Minimalista) ---
+try:
+    from inference import MemePredictor
+except ImportError as e:
+    st.error(f"Error crítico de importación: {e}")
+    st.stop()
+
+# --- 1. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
     page_title="DIME-MEX",
     layout="centered",
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. ESTILOS CSS PERSONALIZADOS (Para móvil) ---
+# --- 2. ESTILOS CSS "APPLE STYLE" ---
 st.markdown("""
     <style>
-        /* Ocultar menú hamburguesa y footer para limpieza visual */
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
-        
-        /* Ajustar padding para móviles */
-        .block-container {
-            padding-top: 2rem;
-            padding-bottom: 2rem;
+        /* Tipografía limpia (System Fonts) */
+        html, body, [class*="css"] {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #1d1d1f;
         }
         
-        /* Botón primario minimalista (Blanco y Negro o color acento del tema) */
+        /* Ocultar elementos nativos de Streamlit */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+        
+        /* Contenedor principal con más aire */
+        .block-container {
+            padding-top: 3rem;
+            padding-bottom: 3rem;
+            max-width: 700px;
+        }
+/* --- BOTÓN ANALIZAR --- */
         div.stButton > button:first-child {
+            background-color: #0071e3; /* Azul Apple */
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 15px 30px; /* Más grande */
+            font-size: 18px;    /* Texto más grande */
+            font-weight: 600;
             width: 100%;
-            border-radius: 5px;
-            height: 3em;
-            font-weight: bold;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 6px rgba(0, 113, 227, 0.2);
+        }
+        
+        div.stButton > button:first-child:hover {
+            background-color: #0077ED;
+            transform: scale(1.01);
+        }
+
+        /* --- RADIO BUTTON (La bolita azul) --- */
+        div[role="radiogroup"] label > div:first-child {
+            background-color: #0071e3 !important;
+            border-color: #0071e3 !important;
+        }
+        /* Estilo de las Métricas (Tarjetas grises tipo iOS) */
+        div[data-testid="stMetric"] {
+            background-color: #f5f5f7;
+            border-radius: 18px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid #e5e5e5;
+        }
+        
+        div[data-testid="stMetricLabel"] {
+            font-size: 14px;
+            color: #86868b;
+        }
+        
+        div[data-testid="stMetricValue"] {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1d1d1f;
+        }
+
+        /* Imágenes con bordes redondeados */
+        img {
+            border-radius: 18px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+        
+        /* File Uploader más limpio */
+        div[data-testid="stFileUploader"] {
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+        
+        /* Títulos */
+        h1, h2, h3 {
+            font-weight: 600;
+            letter-spacing: -0.02em;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -46,73 +114,71 @@ def get_engine():
 try:
     predictor = get_engine()
 except Exception as e:
-    st.error(f"Error iniciando el sistema: {e}")
+    st.error("El servicio no está disponible en este momento.")
     st.stop()
 
 # --- 4. INTERFAZ DE USUARIO ---
 
-# Título limpio
-st.markdown("## Detector de Contenido")
-st.markdown("Clasificación de memes utilizando visión y lenguaje natural.")
+# Encabezado Minimalista
+st.markdown("<h1 style='text-align: center; margin-bottom: 10px;'>DIME-MEX</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #86868b; font-size: 18px;'>Análisis de contenido mediante IA.</p>", unsafe_allow_html=True)
 
-# ACORDEÓN DE CONFIGURACIÓN
-with st.expander("Configuración del Modelo"):
+st.write("") # Espaciador
+
+# Configuración (Acordeón limpio)
+with st.expander("Elegir modelo"):
     task_mode = st.radio(
-        "Nivel de detalle:",
+        "Sensibilidad del modelo",
         options=["simple", "complex"],
-        format_func=lambda x: "Básico (3 Categorías)" if x == "simple" else "Detallado (6 Categorías)"
+        format_func=lambda x: "Estándar ( none, inappropriate, hate-speech )" if x == "simple" else "Detallado ( none, inappropriate, sexism, racism, classicis, hate-speech )",
+        label_visibility="collapsed"
     )
 
-# ÁREA DE DRAG AND DROP
-uploaded_file = st.file_uploader("Cargar imagen", type=["jpg", "png", "jpeg"], help="Arrastra tu archivo aquí")
-
-if uploaded_file is not None:
-    # Mostrar imagen centrada y ajustada al ancho del móvil
-    image = Image.open(uploaded_file)
-    st.image(image, use_column_width=True)
+# Área de Carga
+uploaded_file = st.file_uploader("Subir imagen", type=["jpg", "png", "jpeg"], label_visibility="collapsed")
     
-    # Botón de acción (ocupa todo el ancho por el CSS)
-    if st.button("ANALIZAR IMAGEN", type="primary"):
-        
-        with st.spinner("Procesando..."):
+if uploaded_file is not None:
+    # Mostrar imagen
+    image = Image.open(uploaded_file)
+    # CORRECCIÓN: Usamos use_container_width en lugar de use_column_width
+    st.image(image, use_container_width=True)
+    
+    st.write("") # Espaciador vertical
+    
+    # Botón de Acción
+    if st.button("Analizar"):
+        with st.spinner("Analizando..."):
             try:
-                # Inferencia
                 result = predictor.predict(uploaded_file, task=task_mode)
                 
                 if "error" in result:
-                    st.error(result["error"])
+                    st.error("No se pudo procesar la imagen.")
                 else:
-                    st.divider() # Línea separadora sutil
+                    st.write("") # Espaciador
                     
-                    # --- RESULTADOS MINIMALISTAS (st.metric) ---
-                    # Usamos columnas para que se vea bien en celular (uno al lado del otro o apilados)
+                    # --- RESULTADOS (Tarjetas) ---
                     col1, col2 = st.columns(2)
                     
                     with col1:
                         st.metric(label="Clasificación", value=result['label'])
                     
                     with col2:
-                        # Formato de porcentaje limpio
-                        st.metric(label="Confianza", value=f"{result['confidence']:.1%}")
+                        st.metric(label="Certeza", value=f"{result['confidence']:.1%}")
                     
-                    # Barra de progreso simple
-                    st.progress(result['confidence'])
-                    
-                    # --- DETALLES TÉCNICOS (Ocultos por defecto) ---
-                    with st.expander("Ver texto extraído"):
-                        st.caption("Texto detectado por OCR:")
-                        st.text(result["ocr_text"])
-                        st.caption("Texto procesado para el modelo:")
-                        st.code(result["clean_text"], language="text")
-                    
-                    # --- GRÁFICA LIMPIA ---
-                    st.caption("Distribución de probabilidades")
-                    chart_data = pd.DataFrame({
-                        "Categoría": result['all_labels'],
-                        "Probabilidad": result['probabilities']
-                    })
-                    # Gráfica de barras horizontal es mejor para leer etiquetas largas en móvil
-                    st.bar_chart(chart_data.set_index("Categoría"), color="#333333")
+                    # --- DETALLES (Acordeón inferior) ---
+                    st.write("")
+                    with st.expander("Detalles del análisis"):
+                        st.caption("TEXTO DETECTADO")
+                        st.markdown(f"_{result['ocr_text']}_")
+                        
+                        st.write("")
+                        st.caption("PROBABILIDADES")
+                        # Crear dataframe limpio para la gráfica
+                        chart_data = pd.DataFrame({
+                            "Categoría": result['all_labels'],
+                            "Probabilidad": result['probabilities']
+                        })
+                        st.bar_chart(chart_data.set_index("Categoría"), color="#86868b")
 
-            except Exception as e:
-                st.error(f"Error interno: {e}")
+            except Exception:
+                st.error("Ocurrió un error inesperado durante el análisis.")

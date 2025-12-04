@@ -11,10 +11,7 @@ sys.path.append(CURRENT_DIR)
 from nlp_utils import BetoClassifier
 from utils import clean_text, preprocess_image_for_ocr
 
-# ==========================================
-# ⚙️ CONFIGURACIÓN DEL MODELO
-# ==========================================
-MODEL_VERSION = "v4"  # <--- CAMBIA ESTO si entrenas nuevas versiones
+MODEL_VERSION = "v4" 
 MODEL_NAME = "dccuchile/bert-base-spanish-wwm-cased"
 MAX_LEN = 128
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -26,8 +23,8 @@ MODEL_DIR = os.path.join(PROJECT_ROOT, "models", MODEL_VERSION)
 
 class MemePredictor:
     def __init__(self):
-        print(f"🔧 Inicializando motor en: {DEVICE}")
-        print(f"📂 Buscando modelos versión {MODEL_VERSION} en: {MODEL_DIR}")
+        print(f"Inicializando motor en: {DEVICE}")
+        print(f"Buscando modelos versión {MODEL_VERSION} en: {MODEL_DIR}")
         
         # Cargar OCR (Singleton)
         self.reader = easyocr.Reader(['es', 'en'], gpu=(DEVICE.type == 'cuda'))
@@ -39,7 +36,7 @@ class MemePredictor:
         # Mapas de etiquetas
         self.labels_map = {
             "simple": ["None", "Inappropriate", "Hate"],
-            "complex": ["None", "Inapp", "Sexism", "Racism", "Classicism", "Other"]
+            "complex": ["None", "Inapp", "Sexism", "Racism", "Classicism", "Hate"]
         }
 
     def _get_model_instance(self, task):
@@ -54,7 +51,7 @@ class MemePredictor:
         if not os.path.exists(path):
             raise FileNotFoundError(f"No se encontró el modelo para la tarea '{task}' en {path}")
 
-        print(f"📥 Cargando modelo desde: {path}")
+        print(f"Cargando modelo desde: {path}")
         
         n_classes = len(self.labels_map[task])
         

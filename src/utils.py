@@ -19,33 +19,41 @@ def clean_text(text):
     text = re.sub(r'\s+', ' ', text).strip()
     return text if text else "sin texto"
 
-def preprocess_image_for_ocr(file_bytes):
+def preprocess_image_for_ocr(file_obj):
     """
-    Recibe bytes (desde Streamlit) y aplica filtros de OpenCV.
-    Retorna: (imagen_binarizada, imagen_original_cv2)
+    Versión optimizada para memes con subtítulos oscuros/complejos.
     """
-    # Convertir bytes a array numpy para OpenCV
-    file_bytes = np.asarray(bytearray(file_bytes.read()), dtype=np.uint8)
-    img = cv2.imdecode(file_bytes, 1) # 1 = Color BGR
-    
-    if img is None: return None, None
-
-    # Pipeline de Mejora (Igual al benchmark)
     try:
-        # 1. Upscaling (2x)
+        # Leer el archivo (puede ser UploadedFile de Streamlit o bytes)
+        if hasattr(file_obj, 'read'):
+            file_bytes = np.asarray(bytearray(file_obj.read()), dtype=np.uint8)
+        else:
+            file_bytes = np.asarray(bytearray(file_obj), dtype=np.uint8)
+        
+        img = cv2.imdecode(file_bytes, 1)
+        
+        if img is None:
+            return None, None
+
+        # 1. Upscaling (Mantenemos esto, es vital)
         img_resized = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
         
-        # 2. Escala de Grises
+        # 2. Convertir a escala de grises
         gray = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
         
-        # 3. Denoising
-        denoised = cv2.fastNlMeansDenoising(gray, None, h=10, templateWindowSize=7, searchWindowSize=21)
+        # 3. CAMBIO CLAVE: Aumentar Contraste (CLAHE) en lugar de Binarizar agresivamente
+        # CLAHE (Contrast Limited Adaptive Histogram Equalization) mejora el texto
+        # sin destruir los bordes como lo hace el Threshold puro.
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        contrast_img = clahe.apply(gray)
         
-        # 4. Binarización Adaptativa
-        binary = cv2.adaptiveThreshold(
-            denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-        )
-        return binary, img
+        # 4. Denoising suave (bajamos h de 10 a 5 para no borrar letras finas)
+        denoised = cv2.fastNlMeansDenoising(contrast_img, None, h=5, templateWindowSize=7, searchWindowSize=21)
+        
+        # Retornamos la imagen contrastada (gris) en lugar de binarizada (blanco/negro)
+        # EasyOCR a veces prefiere grises con buen contraste que binarización forzada.
+        return denoised, img
+
     except Exception as e:
-        print(f"Error en pre-procesamiento: {e}")
-        return None, img
+        print(f"Error pre-procesamiento: {e}")
+        return None, None
