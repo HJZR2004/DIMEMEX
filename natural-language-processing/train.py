@@ -5,14 +5,17 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 import os
 import time
-import numpy as np 
-from sklearn.utils.class_weight import compute_class_weight 
+import numpy as np
+from sklearn.utils.class_weight import compute_class_weight
+from sklearn.model_selection import train_test_split
 
+# Importar clases compartidas
 from nlp_utils import BetoClassifier, MemeDataset
 
 # Configuracion de rutas
-SPLITS_DIR = "../data/processed/splits"
-MODEL_DIR = "../models"
+DATA_DIR = "../data/processed/splits"
+MODEL_DIR = "../models/v3"
+COMPLETE_DATA_FILE = "complete-data.csv"
 
 # Hiperparametros globales
 MODEL_NAME = "dccuchile/bert-base-spanish-wwm-cased"
@@ -65,97 +68,126 @@ def eval_model(model, data_loader, loss_fn, device, n_examples):
             
     return correct_predictions.double() / n_examples, sum(losses) / len(losses)
 
-def run_training_pipeline(task_name, device):
-    print(f"\nIniciando entrenamiento para tarea: {task_name}")
-
+def prepare_datasets(task_name, production_mode):
+    # Determinar columna objetivo segun tarea
     if task_name == "simple":
         target_col = "label-simple"
-        model_save_path = os.path.join(MODEL_DIR, "beto_simple_v2.pth")
     elif task_name == "complex":
         target_col = "label-complex"
-        model_save_path = os.path.join(MODEL_DIR, "beto_complex_v2.pth")
     else:
-        print(f"Tarea desconocida: {task_name}")
-        return
+        raise ValueError("Tarea desconocida")
 
-    # Si quieres re-entrenar para mejorar, comenta estas lineas o borra los archivos .pth viejos
+    if production_mode:
+        # Carga dataset completo para produccion
+        full_path = os.path.join(DATA_DIR, COMPLETE_DATA_FILE)
+        if not os.path.exists(full_path):
+            print(f"Error: No existe {full_path}")
+            return None, None, None
+            
+        df_full = pd.read_csv(full_path)
+        
+        # Usar casi todo para train, dejar minimo para val solo para evitar errores
+        # Stratify es importante para mantener proporcion en el mini val
+        df_train, df_val = train_test_split(
+            df_full, 
+            test_size=0.05, 
+            random_state=42, 
+            stratify=df_full[target_col]
+        )
+    else:
+        # Carga splits de experimentacion
+        train_path = os.path.join(DATA_DIR, "train.csv")
+        val_path = os.path.join(DATA_DIR, "val.csv")
+        
+        if not os.path.exists(train_path) or not os.path.exists(val_path):
+            print("Error: No existen train.csv o val.csv")
+            return None, None, None
+            
+        df_train = pd.read_csv(train_path)
+        df_val = pd.read_csv(val_path)
+
+    return df_train, df_val, target_col
+
+def run_pipeline(task_name, production_mode, device):
+    mode_str = "PROD" if production_mode else "EXP"
+    print(f"\n{'='*60}")
+    print(f" INICIANDO: TAREA {task_name.upper()} | MODO: {mode_str}")
+    print(f"{'='*60}")
+
+    # Configurar nombre del modelo
+    suffix = "_prod" if production_mode else "_exp"
+    model_filename = f"beto_{task_name}{suffix}.pth"
+    model_save_path = os.path.join(MODEL_DIR, model_filename)
+
+    # Evitar re-entrenamiento si ya existe
     if os.path.exists(model_save_path):
-        print(f"El modelo ya existe en: {model_save_path}. Saltando...")
+        print(f"Aviso: El modelo {model_filename} ya existe. Saltando...")
         return
 
-    train_path = os.path.join(SPLITS_DIR, "train.csv")
-    val_path = os.path.join(SPLITS_DIR, "val.csv")
-
-    if not os.path.exists(train_path) or not os.path.exists(val_path):
-        print("Error: No se encuentran los archivos train.csv o val.csv en splits.")
+    # Preparar datos
+    df_train, df_val, target_col = prepare_datasets(task_name, production_mode)
+    if df_train is None:
         return
 
-    df_train = pd.read_csv(train_path)
-    df_val = pd.read_csv(val_path)
-
-    n_classes = df_train[target_col].nunique()
-    print(f"Clases detectadas ({target_col}): {n_classes}")
-    print(f"Datos de entrenamiento: {len(df_train)} | Validacion: {len(df_val)}")
-
-    # Calculo de pesos de clase para balanceo
-
-    # Extraer todos los labels de entrenamiento
+    print(f"Train size: {len(df_train)} | Val size: {len(df_val)}")
+    
+    # Calcular pesos de clase para balanceo
     all_labels = df_train[target_col].values
     classes = np.unique(all_labels)
+    n_classes = len(classes)
     
-    # Calcular pesos balanceados: w_j = n_samples / (n_classes * n_samples_j)
-    print("Calculando pesos de clases para balanceo...")
+    print(f"Calculando pesos para {n_classes} clases...")
     weights = compute_class_weight(class_weight='balanced', classes=classes, y=all_labels)
-    
-    # Convertir a tensor y mover al dispositivo (GPU/CPU)
     class_weights = torch.tensor(weights, dtype=torch.float).to(device)
-    print(f"Pesos asignados a las clases: {class_weights}")
-
-######################################
-
+    
+    # Preparar loaders
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    train_loader = DataLoader(MemeDataset(df_train, tokenizer, MAX_LEN, target_col), batch_size=BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(MemeDataset(df_val, tokenizer, MAX_LEN, target_col), batch_size=BATCH_SIZE)
+    train_loader = DataLoader(MemeDataset(df_train, tokenizer, MAX_LEN, target_col), 
+                              batch_size=BATCH_SIZE, shuffle=True)
+    val_loader = DataLoader(MemeDataset(df_val, tokenizer, MAX_LEN, target_col), 
+                            batch_size=BATCH_SIZE)
 
-    # Instanciamos la clase importada de nlp_utils
+    # Inicializar modelo y optimizador
     model = BetoClassifier(n_classes, MODEL_NAME).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
-    
-    # Pasamos los pesos a la funcion de perdida
     loss_fn = nn.CrossEntropyLoss(weight=class_weights).to(device)
 
+    # Bucle de entrenamiento
     best_acc = 0
     os.makedirs(MODEL_DIR, exist_ok=True)
 
     for epoch in range(EPOCHS):
-        print(f"Epoch {epoch+1}/{EPOCHS}")
         start = time.time()
         
         train_acc, train_loss = train_epoch(model, train_loader, loss_fn, optimizer, device, len(df_train))
         val_acc, val_loss = eval_model(model, val_loader, loss_fn, device, len(df_val))
         
-        print(f"Train Acc: {train_acc:.4f} | Loss: {train_loss:.4f}")
-        print(f"Val   Acc: {val_acc:.4f} | Loss: {val_loss:.4f}")
+        print(f"Epoca {epoch+1}/{EPOCHS} | Train Loss: {train_loss:.4f} | Val Acc: {val_acc:.4f}")
         
-        # Guardar el mejor modelo
+        # Guardar siempre el mejor
         if val_acc > best_acc:
             torch.save(model.state_dict(), model_save_path)
             best_acc = val_acc
-            print(f"Modelo guardado: {model_save_path}")
+            print(f"  -> Nuevo mejor modelo guardado")
 
-    print(f"Finalizado {task_name}. Mejor Accuracy: {best_acc:.4f}")
+    print(f"Finalizado {model_filename}. Mejor Accuracy: {best_acc:.4f}")
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Dispositivo: {device}")
+    print(f"Dispositivo global: {device}")
 
-    tasks_to_run = ["simple", "complex"]
+    # Lista de configuraciones a ejecutar
+    scenarios = [
+        {"task": "simple", "prod": False},  # Experimentacion
+        {"task": "complex", "prod": False}, # Experimentacion
+        {"task": "simple", "prod": True},   # Produccion Final
+        {"task": "complex", "prod": True}   # Produccion Final
+    ]
 
-    for task in tasks_to_run:
+    for sc in scenarios:
         try:
-            run_training_pipeline(task, device)
+            run_pipeline(sc["task"], sc["prod"], device)
         except Exception as e:
-            print(f"Error critico en tarea {task}: {e}")
-            continue
+            print(f"ERROR CRITICO en escenario {sc}: {e}")
             
-    print("\nEntrenamiento completado para todas las tareas.")
+    print("\nTodos los procesos de entrenamiento han finalizado.")

@@ -29,8 +29,17 @@ def create_master_splits():
     df_labels_merged = pd.merge(df_simple, df_complex[['id', 'label-complex']], on='id', how='inner')
     
     # Unir el resultado anterior con el texto limpio
+    # df_master contiene el 100% de los datos etiquetados y listos
     df_master = pd.merge(df_labels_merged, df_text[['id', 'text_clean']], on='id', how='inner')
     
+    # Crear directorio de salida
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    # Guardar el dataset completo para referencia
+    complete_data_path = os.path.join(OUTPUT_DIR, "complete-data.csv")
+    df_master.to_csv(complete_data_path, index=False)
+    print(f"Dataset completo guardado en: {complete_data_path}")
+
     # Realizar particion estratificada basada en la etiqueta compleja
     # Separar conjunto de prueba del total
     df_temp, df_test = train_test_split(
@@ -48,13 +57,12 @@ def create_master_splits():
         stratify=df_temp['label-complex']
     )
     
-    # Crear directorio de salida y guardar los tres archivos CSV resultantes
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    # Guardar los tres archivos de splits (Para Experimentacion)
     df_train.to_csv(os.path.join(OUTPUT_DIR, "train.csv"), index=False)
     df_val.to_csv(os.path.join(OUTPUT_DIR, "val.csv"), index=False)
     df_test.to_csv(os.path.join(OUTPUT_DIR, "test.csv"), index=False)
     
-    print(f"Particion de datos finalizada y guardada en {OUTPUT_DIR}")
+    print(f"Splits (train/val/test) guardados en {OUTPUT_DIR}")
 
 if __name__ == "__main__":
     create_master_splits()

@@ -10,7 +10,8 @@ from nlp_utils import BetoClassifier, MemeDataset
 # Configuracion de rutas
 DATA_DIR = "../data/processed/splits"
 TEST_FILE = "test.csv"
-MODEL_DIR = "../models"
+VERSION = int(input("Ingrese la version del modelo a testear (1 2 3): "))
+MODEL_DIR = f"../models/v{VERSION}"
 
 # Hiperparametros
 MODEL_NAME = "dccuchile/bert-base-spanish-wwm-cased"
@@ -46,11 +47,11 @@ def run_test_pipeline(task_name, device):
     print("="*50)
 
     if task_name == "simple":
-        model_path = os.path.join(MODEL_DIR, "beto_simple.pth")
+        model_path = os.path.join(MODEL_DIR, f"beto_simple_v{VERSION}.pth")
         target_col = "label-simple"
         classes_names = ["None", "Inappropriate", "Hate"]
     elif task_name == "complex":
-        model_path = os.path.join(MODEL_DIR, "beto_complex.pth")
+        model_path = os.path.join(MODEL_DIR, f"beto_complex_v{VERSION}.pth")
         target_col = "label-complex"
         classes_names = ["None", "Inapp", "Sexism", "Racism", "Classicism", "Other"]
     else:
