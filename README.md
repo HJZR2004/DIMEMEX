@@ -258,14 +258,6 @@ Este proyecto es académico y está en desarrollo activo. Las contribuciones son
 - Optimización de hiperparámetros
 - Expansión del dataset con más ejemplos anotados
 
-## Licencia
-
-Este proyecto está bajo la licencia especificada en el archivo LICENSE.
-
-## Contacto
-
-Para preguntas sobre el proyecto, acceso a datos o modelos pre-entrenados, contacta a los mantenedores del repositorio.
-
 ## Reconocimientos
 
 - Dataset DIMEMEX del challenge de detección de contenido inapropiado en memes mexicanos
